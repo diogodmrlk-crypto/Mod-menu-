@@ -3,8 +3,7 @@
 
 @interface PurpouMenu : NSObject
 + (instancetype)shared;
-- (void)show;
+- (void)show;              // Abre o menu grande
+- (void)showMinimized;     // Abre só a barrinha
 - (void)hide;
-- (void)setupHooks;
-- (void)checkAndSetupGesture;
 @end
