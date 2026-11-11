@@ -1,10 +1,9 @@
-#import "Menu.h"
 #import "Hooks.h"
+#import "Gesture.h"
 
 %ctor {
-    // Espera 8 segundos pro jogo carregar o Unity e o mapa
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [[PurpouHooks shared] setup];
-        [[PurpouMenu shared] show];
-    });
+    // Inicia o detector de gestos e os hooks assim que a dylib carregar
+    [[PurpouHooks shared] setup];
+    [[PurpouGesture shared] start];
+    NSLog(@"[PURPOU] Hooks e Gesture iniciados imediatamente.");
 }
