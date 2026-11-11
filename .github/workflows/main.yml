@@ -1,0 +1,30 @@
+name: Build PurpouMenu Dylib
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Theos
+        run: |
+          git clone --recursive https://github.com/theos/theos.git $HOME/theos
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+
+      - name: Install ldid
+        run: brew install ldid
+
+      - name: Build Dylib
+        run: |
+          export THEOS=$HOME/theos
+          export THEOS_MAKE_PATH=$HOME/theos/makefiles
+          export TARGET_CODESIGN=$(which ldid)
+          make FINALPACKAGE=1
+
+      - name: Upload Dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: PurpouMenu-Dylib
+          path: .theos/obj/arm64/*.dylib
