@@ -9,7 +9,7 @@
 // ============================================================
 static PurpouWindow *gOverlayWindow = nil;
 static UIView *gMenuContainer = nil;
-static UIWindow *gGestureWindow = nil;
+static PurpouWindow *gGestureWindow = nil;
 
 #define P_BG        [UIColor colorWithRed:0.08 green:0.08 blue:0.10 alpha:0.97]
 #define P_BG2       [UIColor colorWithRed:0.13 green:0.13 blue:0.16 alpha:1.0]
@@ -37,7 +37,7 @@ static UIWindow *gGestureWindow = nil;
 @end
 
 // ============================================================
-// PassThroughWindow (Para o menu não bloquear o jogo)
+// PassThroughWindow (Deixa o toque ir pro jogo)
 // ============================================================
 @interface PurpouWindow : UIWindow
 @property (nonatomic, weak) UIView *interactive1;
@@ -46,11 +46,13 @@ static UIWindow *gGestureWindow = nil;
 - (UIView*)hitTest:(CGPoint)p withEvent:(UIEvent*)e {
     UIView *v = [super hitTest:p withEvent:e];
     if (!v) return nil;
+    // Se a view interativa (menu) estiver visível e o toque estiver dentro dela, pega o toque.
     if (self.interactive1 && !self.interactive1.hidden) {
         CGPoint q = [self.interactive1 convertPoint:p fromView:self];
         if ([self.interactive1 pointInside:q withEvent:e]) return v;
     }
-    return nil; // Passa o toque pro jogo
+    // Caso contrário, o toque "vaza" pro jogo (retorna nil).
+    return nil; 
 }
 @end
 
@@ -147,7 +149,6 @@ static UIWindow *gGestureWindow = nil;
     currentTab = 0;
     [self buildMenu];
 
-    // Observadores pra esconder o menu quando um Ad aparecer
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(hideForAd) name:UIWindowDidBecomeVisibleNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(showAfterAd) name:UIWindowDidBecomeHiddenNotification object:nil];
 }
@@ -328,7 +329,7 @@ static UIWindow *gGestureWindow = nil;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         inst = [PurpouMenu new];
-        [inst setupGestureDetector]; // Inicia o detector ao criar a instância
+        [inst setupGestureDetector]; 
     });
     return inst;
 }
@@ -339,8 +340,8 @@ static UIWindow *gGestureWindow = nil;
         for (UIScene *s in [UIApplication sharedApplication].connectedScenes)
             if ([s isKindOfClass:[UIWindowScene class]]) { scene = (UIWindowScene*)s; break; }
 
-        // Cria uma janela transparente que não bloqueia o toque do jogo
-        gGestureWindow = scene ? [[UIWindow alloc] initWithWindowScene:scene] : [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        // Usa a PurpouWindow que tem o hitTest customizado
+        gGestureWindow = scene ? [[PurpouWindow alloc] initWithWindowScene:scene] : [[PurpouWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
         gGestureWindow.frame = [UIScreen mainScreen].bounds;
         gGestureWindow.windowLevel = UIWindowLevelAlert + 2000;
         gGestureWindow.backgroundColor = [UIColor clearColor];
@@ -348,11 +349,11 @@ static UIWindow *gGestureWindow = nil;
         gGestureWindow.userInteractionEnabled = YES;
         gGestureWindow.rootViewController = [UIViewController new];
 
-        // Adiciona o gesto de 3 dedos e 5 toques
+        // O gesto é anexado à janela
         UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleGesture:)];
         tap.numberOfTouchesRequired = 3;
         tap.numberOfTapsRequired = 5;
-        tap.cancelsTouchesInView = NO; // IMPORTANTE: deixa o jogo receber o toque
+        tap.cancelsTouchesInView = NO; // O toque vai pro jogo
         [gGestureWindow addGestureRecognizer:tap];
     });
 }
