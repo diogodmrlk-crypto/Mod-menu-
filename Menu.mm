@@ -6,7 +6,6 @@
 
 static PurpouWindow *gOverlayWindow = nil;
 static UIView *gMenuContainer = nil;
-static UIView *gFloatingButton = nil;
 static BOOL gVehicleESP = NO;
 static BOOL gMoneyInf = NO;
 static BOOL gAutoDrive = NO;
@@ -35,7 +34,6 @@ static BOOL gAutoDrive = NO;
 
 @interface PurpouWindow : UIWindow
 @property (nonatomic, weak) UIView *interactive1;
-@property (nonatomic, weak) UIView *interactive2;
 @end
 @implementation PurpouWindow
 - (UIView*)hitTest:(CGPoint)p withEvent:(UIEvent*)e {
@@ -44,10 +42,6 @@ static BOOL gAutoDrive = NO;
     if (self.interactive1 && !self.interactive1.hidden) {
         CGPoint q = [self.interactive1 convertPoint:p fromView:self];
         if ([self.interactive1 pointInside:q withEvent:e]) return v;
-    }
-    if (self.interactive2 && !self.interactive2.hidden) {
-        CGPoint q = [self.interactive2 convertPoint:p fromView:self];
-        if ([self.interactive2 pointInside:q withEvent:e]) return v;
     }
     return nil;
 }
@@ -140,28 +134,12 @@ static BOOL gAutoDrive = NO;
     currentTab = 0;
     [self buildMenu];
 
-    // ESCONDE O MENU QUANDO O ANÚNCIO APARECE
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(hideForAd)
-                                                 name:UIWindowDidBecomeVisibleNotification
-                                               object:nil];
-    
-    // MOSTRA O MENU QUANDO O ANÚNCIO FECHA
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(showAfterAd)
-                                                 name:UIWindowDidBecomeHiddenNotification
-                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(hideForAd) name:UIWindowDidBecomeVisibleNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(showAfterAd) name:UIWindowDidBecomeHiddenNotification object:nil];
 }
 
-- (void)hideForAd {
-    gMenuContainer.hidden = YES;
-    gFloatingButton.hidden = YES;
-}
-
-- (void)showAfterAd {
-    if (gFloatingButton) gFloatingButton.hidden = NO;
-    if (gMenuContainer) gMenuContainer.hidden = NO;
-}
+- (void)hideForAd { gMenuContainer.hidden = YES; }
+- (void)showAfterAd { if (gMenuContainer) gMenuContainer.hidden = NO; }
 
 - (void)buildMenu {
     gMenuContainer = [UIView new];
@@ -314,29 +292,14 @@ static BOOL gAutoDrive = NO;
 }
 
 - (void)minimize {
-    gMenuContainer.hidden = YES;
-    gFloatingButton.hidden = NO;
-    gFloatingButton.transform = CGAffineTransformMakeScale(0.1, 0.1);
-    [UIView animateWithDuration:0.4 delay:0 usingSpringWithDamping:0.5 initialSpringVelocity:1.0 options:0 animations:^{
-        gFloatingButton.transform = CGAffineTransformIdentity;
-    } completion:nil];
-}
-
-- (void)restoreMenu {
-    gFloatingButton.hidden = YES;
-    gMenuContainer.hidden = NO;
-    gMenuContainer.transform = CGAffineTransformMakeScale(0.1, 0.1);
-    gMenuContainer.alpha = 0;
-    [UIView animateWithDuration:0.5 delay:0 usingSpringWithDamping:0.4 initialSpringVelocity:1.5 options:UIViewAnimationOptionAllowUserInteraction animations:^{
-        gMenuContainer.transform = CGAffineTransformIdentity;
-        gMenuContainer.alpha = 1;
-    } completion:nil];
-}
-
-- (void)handleBallPan:(UIPanGestureRecognizer*)p {
-    CGPoint t = [p translationInView:self.view];
-    gFloatingButton.center = CGPointMake(gFloatingButton.center.x + t.x, gFloatingButton.center.y + t.y);
-    [p setTranslation:CGPointZero inView:self.view];
+    [UIView animateWithDuration:0.2 animations:^{
+        gMenuContainer.transform = CGAffineTransformMakeScale(0.1, 0.1);
+        gMenuContainer.alpha = 0;
+    } completion:^(BOOL finished) {
+        gOverlayWindow.hidden = YES;
+        gOverlayWindow = nil;
+        gMenuContainer = nil;
+    }];
 }
 
 @end
@@ -352,6 +315,8 @@ static BOOL gAutoDrive = NO;
 
 - (void)show {
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (gOverlayWindow) return; // Já tá aberto
+
         UIWindowScene *scene = nil;
         for (UIScene *s in [UIApplication sharedApplication].connectedScenes)
             if ([s isKindOfClass:[UIWindowScene class]]) { scene = (UIWindowScene*)s; break; }
@@ -368,26 +333,7 @@ static BOOL gAutoDrive = NO;
         win.hidden = NO;
         [win makeKeyAndVisible];
 
-        PurpouButton *ball = [PurpouButton buttonWithType:UIButtonTypeSystem];
-        ball.frame = CGRectMake(20, 100, 54, 54);
-        ball.backgroundColor = P_ACCENT;
-        ball.layer.cornerRadius = 27;
-        ball.layer.shadowColor = [UIColor blackColor].CGColor;
-        ball.layer.shadowOpacity = 0.6;
-        ball.layer.shadowRadius = 10;
-        [ball setTitle:@"P" forState:UIControlStateNormal];
-        [ball setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        ball.titleLabel.font = [UIFont boldSystemFontOfSize:22];
-        ball.hidden = YES;
-        [ball addTarget:vc action:@selector(restoreMenu) forControlEvents:UIControlEventTouchUpInside];
-
-        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:vc action:@selector(handleBallPan:)];
-        [ball addGestureRecognizer:pan];
-        [vc.view addSubview:ball];
-        gFloatingButton = ball;
-
         win.interactive1 = gMenuContainer;
-        win.interactive2 = gFloatingButton;
     });
 }
 
@@ -396,7 +342,6 @@ static BOOL gAutoDrive = NO;
         gOverlayWindow.hidden = YES;
         gOverlayWindow = nil;
         gMenuContainer = nil;
-        gFloatingButton = nil;
     });
 }
 
