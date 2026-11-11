@@ -5,7 +5,7 @@
 #include <mach/mach.h>
 #include <mach/vm_map.h>
 
-// Declaração do Dobby
+// Dobby (declaração manual)
 extern "C" int DobbyHook(void* address, void* replace, void** origin);
 
 // ============================================================
@@ -27,17 +27,11 @@ static bool safeWrite(void *addr, const void *buf, size_t size) {
     return vm_write(mach_task_self(), (vm_address_t)a, (vm_address_t)buf, size) == KERN_SUCCESS;
 }
 
-// ============================================================
-// Offsets
-// ============================================================
 #define OFF_DAMAGE_DATA                 0xD0
 #define OFF_CAIXA_RECOLHER              0x1AE16EC
 #define OFF_CARTEIRA_CREDITAR           0x1E49A28
 #define OFF_HABILITACAO_APROVAR         0x21435E8
 
-// ============================================================
-// Estado global
-// ============================================================
 static BOOL gSpeedOn = NO;
 static BOOL gAccelOn = NO;
 static BOOL gNoDamageOn = NO;
@@ -45,9 +39,6 @@ static BOOL gAutoDriveOn = NO;
 static BOOL gAutoCollectOn = NO;
 static BOOL gMoneyOn = NO;
 
-// ============================================================
-// Funções originais
-// ============================================================
 typedef void (*OnCollision_t)(void *self, void *collision);
 static OnCollision_t orig_OnCollision = NULL;
 
@@ -57,9 +48,6 @@ static RecolherAoPassar_t orig_RecolherAoPassar = NULL;
 typedef BOOL (*Creditar_t)(int centavos, NSString *rotulo, int tipo);
 static Creditar_t orig_Creditar = NULL;
 
-// ============================================================
-// Hooks
-// ============================================================
 static void hooked_OnCollision(void *self, void *collision) {
     if (gNoDamageOn) {
         uintptr_t damageDataAddr = (uintptr_t)self + OFF_DAMAGE_DATA;
@@ -87,9 +75,6 @@ static BOOL hooked_Creditar(int centavos, NSString *rotulo, int tipo) {
     return orig_Creditar ? orig_Creditar(centavos, rotulo, tipo) : NO;
 }
 
-// ============================================================
-// Setup
-// ============================================================
 @implementation PurpouHooks
 
 + (instancetype)shared {
@@ -101,21 +86,13 @@ static BOOL hooked_Creditar(int centavos, NSString *rotulo, int tipo) {
 
 - (void)setup {
     uintptr_t unity = getFrameworkBase("UnityFramework");
-    if (!unity) {
-        NSLog(@"[PURPOU] UnityFramework não encontrado.");
-        return;
-    }
+    if (!unity) return;
 
-    // Hook OnCollision (Sem Dano)
     DobbyHook((void*)(unity + 0x1947D90), (void*)hooked_OnCollision, (void**)&orig_OnCollision);
-
-    // Hook RecolherAoPassar (Auto Coleta)
     DobbyHook((void*)(unity + OFF_CAIXA_RECOLHER), (void*)hooked_RecolherAoPassar, (void**)&orig_RecolherAoPassar);
-
-    // Hook Creditar (Dinheiro)
     DobbyHook((void*)(unity + OFF_CARTEIRA_CREDITAR), (void*)hooked_Creditar, (void**)&orig_Creditar);
 
-    NSLog(@"[PURPOU] Hooks instalados.");
+    NSLog(@"[PURPOU] Hooks com Dobby instalados.");
 }
 
 - (void)toggleSpeed:(BOOL)on { gSpeedOn = on; }
