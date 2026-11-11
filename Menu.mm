@@ -37,7 +37,7 @@ static PurpouWindow *gGestureWindow = nil;
 @end
 
 // ============================================================
-// PassThroughWindow (Deixa o toque ir pro jogo)
+// PassThroughWindow (Para o menu e o gesto não bloquearem o jogo)
 // ============================================================
 @interface PurpouWindow : UIWindow
 @property (nonatomic, weak) UIView *interactive1;
@@ -46,13 +46,11 @@ static PurpouWindow *gGestureWindow = nil;
 - (UIView*)hitTest:(CGPoint)p withEvent:(UIEvent*)e {
     UIView *v = [super hitTest:p withEvent:e];
     if (!v) return nil;
-    // Se a view interativa (menu) estiver visível e o toque estiver dentro dela, pega o toque.
     if (self.interactive1 && !self.interactive1.hidden) {
         CGPoint q = [self.interactive1 convertPoint:p fromView:self];
         if ([self.interactive1 pointInside:q withEvent:e]) return v;
     }
-    // Caso contrário, o toque "vaza" pro jogo (retorna nil).
-    return nil; 
+    return nil; // Deixa o toque ir pro jogo
 }
 @end
 
@@ -311,9 +309,14 @@ static PurpouWindow *gGestureWindow = nil;
         gMenuContainer.transform = CGAffineTransformMakeScale(0.1, 0.1);
         gMenuContainer.alpha = 0;
     } completion:^(BOOL finished) {
+        // Apenas esconde, não destrói. Assim o gesto continua funcionando.
         gOverlayWindow.hidden = YES;
         gOverlayWindow = nil;
         gMenuContainer = nil;
+        
+        if (gGestureWindow) {
+            gGestureWindow.hidden = NO;
+        }
     }];
 }
 
@@ -329,9 +332,15 @@ static PurpouWindow *gGestureWindow = nil;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         inst = [PurpouMenu new];
-        [inst setupGestureDetector]; 
     });
+    [inst checkAndSetupGesture];
     return inst;
+}
+
+- (void)checkAndSetupGesture {
+    if (!gGestureWindow) {
+        [self setupGestureDetector];
+    }
 }
 
 - (void)setupGestureDetector {
@@ -340,7 +349,6 @@ static PurpouWindow *gGestureWindow = nil;
         for (UIScene *s in [UIApplication sharedApplication].connectedScenes)
             if ([s isKindOfClass:[UIWindowScene class]]) { scene = (UIWindowScene*)s; break; }
 
-        // Usa a PurpouWindow que tem o hitTest customizado
         gGestureWindow = scene ? [[PurpouWindow alloc] initWithWindowScene:scene] : [[PurpouWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
         gGestureWindow.frame = [UIScreen mainScreen].bounds;
         gGestureWindow.windowLevel = UIWindowLevelAlert + 2000;
@@ -349,11 +357,10 @@ static PurpouWindow *gGestureWindow = nil;
         gGestureWindow.userInteractionEnabled = YES;
         gGestureWindow.rootViewController = [UIViewController new];
 
-        // O gesto é anexado à janela
         UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleGesture:)];
         tap.numberOfTouchesRequired = 3;
         tap.numberOfTapsRequired = 5;
-        tap.cancelsTouchesInView = NO; // O toque vai pro jogo
+        tap.cancelsTouchesInView = NO; 
         [gGestureWindow addGestureRecognizer:tap];
     });
 }
@@ -367,7 +374,7 @@ static PurpouWindow *gGestureWindow = nil;
 
 - (void)show {
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (gOverlayWindow) return; // Já tá aberto
+        if (gOverlayWindow) return;
 
         UIWindowScene *scene = nil;
         for (UIScene *s in [UIApplication sharedApplication].connectedScenes)
