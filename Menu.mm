@@ -5,7 +5,7 @@
 // ============================================================
 // Estado global
 // ============================================================
-static UIWindow *gOverlayWindow = nil;
+static PurpouWindow *gOverlayWindow = nil;
 static UIView *gMenuContainer = nil;
 static UIView *gFloatingButton = nil;
 static BOOL gVehicleESP = NO;
@@ -362,16 +362,17 @@ static BOOL gAutoDrive = NO;
         for (UIScene *s in [UIApplication sharedApplication].connectedScenes)
             if ([s isKindOfClass:[UIWindowScene class]]) { scene = (UIWindowScene*)s; break; }
 
-        gOverlayWindow = scene ? [[PurpouWindow alloc] initWithWindowScene:scene]
-                               : [[PurpouWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-        gOverlayWindow.frame = [UIScreen mainScreen].bounds;
-        gOverlayWindow.windowLevel = UIWindowLevelAlert + 1000;
-        gOverlayWindow.backgroundColor = [UIColor clearColor];
+        PurpouWindow *win = scene ? [[PurpouWindow alloc] initWithWindowScene:scene]
+                                  : [[PurpouWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        win.frame = [UIScreen mainScreen].bounds;
+        win.windowLevel = UIWindowLevelAlert + 1000;
+        win.backgroundColor = [UIColor clearColor];
+        gOverlayWindow = win;
 
         PurpouMenuVC *vc = [PurpouMenuVC new];
-        gOverlayWindow.rootViewController = vc;
-        gOverlayWindow.hidden = NO;
-        [gOverlayWindow makeKeyAndVisible];
+        win.rootViewController = vc;
+        win.hidden = NO;
+        [win makeKeyAndVisible];
 
         PurpouButton *ball = [PurpouButton buttonWithType:UIButtonTypeSystem];
         ball.frame = CGRectMake(20, 100, 54, 54);
@@ -391,8 +392,8 @@ static BOOL gAutoDrive = NO;
         [vc.view addSubview:ball];
         gFloatingButton = ball;
 
-        gOverlayWindow.interactive1 = gMenuContainer;
-        gOverlayWindow.interactive2 = gFloatingButton;
+        win.interactive1 = gMenuContainer;
+        win.interactive2 = gFloatingButton;
     });
 }
 
