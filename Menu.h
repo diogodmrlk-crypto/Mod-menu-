@@ -1,1 +1,8 @@
-#import "Hooks.h"
+#pragma once
+#import <UIKit/UIKit.h>
+
+@interface PurpouMenu : NSObject
++ (instancetype)shared;
+- (void)show;
+- (void)hide;
+@end
