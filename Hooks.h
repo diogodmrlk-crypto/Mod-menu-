@@ -6,11 +6,8 @@
 - (void)setup;
 - (void)toggleSpeed:(BOOL)on;
 - (void)toggleAcceleration:(BOOL)on;
-- (void)toggleUnlockVehicles:(BOOL)on;
-- (void)toggleMoney:(BOOL)on;
-- (void)toggleNoAds:(BOOL)on;
 - (void)toggleNoDamage:(BOOL)on;
-- (void)toggleAutoDrive:(BOOL)on;
-- (void)toggleAutoCollect:(BOOL)on;
+- (void)toggleMoney:(BOOL)on;
 - (void)toggleAutoCNH:(BOOL)on;
+- (void)toggleUnlockVehicles:(BOOL)on;
 @end
