@@ -5,7 +5,7 @@
     [[PurpouHooks shared] setup];
     [[PurpouMenu shared] show]; 
     
-    // Se o app voltar do background, garante que o gesto está ativo
+    // Se o app voltar do background, recria a janela de gestos se necessário
     [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
                                                       object:nil
                                                        queue:[NSOperationQueue mainQueue]
