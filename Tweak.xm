@@ -2,11 +2,11 @@
 #import "Menu.h"
 
 %ctor {
-    // 1. Inicia os hooks de memória (RVAs achadas)
+    // 1. Inicia os hooks de memória (RVAs)
     [[PurpouHooks shared] setup];
     
-    // 2. Instala o hook de toque via Dobby
-    [[PurpouMenu shared] setupHooks];
+    // 2. Mostra a UI já na versão minimizada (barrinha)
+    [[PurpouMenu shared] showMinimized];
     
-    NSLog(@"[PURPOU] Carregado com Dobby.");
+    NSLog(@"[PURPOU] Carregado. Barrinha ativa.");
 }
