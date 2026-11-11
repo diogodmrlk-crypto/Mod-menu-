@@ -1,25 +1,74 @@
 #import "Menu.h"
 #import "Hooks.h"
 #import <objc/runtime.h>
+#import <substrate.h> // Importante para o hook
 
 @class PurpouWindow;
 
-// ============================================================
-// Variáveis Globais
-// ============================================================
 static PurpouWindow *gOverlayWindow = nil;
 static UIView *gMenuContainer = nil;
-static PurpouWindow *gGestureWindow = nil;
 
+// Variáveis do Hook
+static NSInteger gTapCount = 0;
+static NSTimer *gTapTimer = nil;
+
+// Função original do touchesBegan
+static void (*orig_touchesBegan)(id, SEL, NSSet *, UIEvent *);
+
+// Nossa função que substitui a do jogo
+static void hooked_touchesBegan(id self, SEL _cmd, NSSet *touches, UIEvent *event) {
+    // Conta quantos dedos tocaram
+    if (touches.count >= 3) {
+        gTapCount++;
+        
+        // Reseta o contador depois de 1 segundo
+        [gTapTimer invalidate];
+        gTapTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:NO block:^(NSTimer * _Nonnull timer) {
+            gTapCount = 0;
+        }];
+        
+        // Se bater 5 vezes com 3 dedos, abre o menu
+        if (gTapCount >= 5) {
+            gTapCount = 0;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[PurpouMenu shared] show];
+            });
+        }
+    }
+    
+    // Chama a função original do jogo (pra ele não parar de funcionar)
+    if (orig_touchesBegan) {
+        orig_touchesBegan(self, _cmd, touches, event);
+    }
+}
+
+// ============================================================
+// PassThroughWindow (Para o menu não bloquear o jogo)
+// ============================================================
+@interface PurpouWindow : UIWindow
+@property (nonatomic, weak) UIView *interactive1;
+@end
+@implementation PurpouWindow
+- (UIView*)hitTest:(CGPoint)p withEvent:(UIEvent*)e {
+    UIView *v = [super hitTest:p withEvent:e];
+    if (!v) return nil;
+    if (self.interactive1 && !self.interactive1.hidden) {
+        CGPoint q = [self.interactive1 convertPoint:p fromView:self];
+        if ([self.interactive1 pointInside:q withEvent:e]) return v;
+    }
+    return nil; 
+}
+@end
+
+// ============================================================
+// Toggle e Botões (Mantidos iguais)
+// ============================================================
 #define P_BG        [UIColor colorWithRed:0.08 green:0.08 blue:0.10 alpha:0.97]
 #define P_BG2       [UIColor colorWithRed:0.13 green:0.13 blue:0.16 alpha:1.0]
 #define P_ACCENT    [UIColor colorWithRed:0.55 green:0.25 blue:0.95 alpha:1.0]
 #define P_TEXT      [UIColor colorWithWhite:0.95 alpha:1.0]
 #define P_SUBTEXT   [UIColor colorWithWhite:0.6 alpha:1.0]
 
-// ============================================================
-// Custom Button
-// ============================================================
 @interface PurpouButton : UIButton @end
 @implementation PurpouButton
 - (void)touchesBegan:(NSSet<UITouch*>*)t withEvent:(UIEvent*)e {
@@ -36,27 +85,6 @@ static PurpouWindow *gGestureWindow = nil;
 }
 @end
 
-// ============================================================
-// PassThroughWindow (Para o menu e o gesto não bloquearem o jogo)
-// ============================================================
-@interface PurpouWindow : UIWindow
-@property (nonatomic, weak) UIView *interactive1;
-@end
-@implementation PurpouWindow
-- (UIView*)hitTest:(CGPoint)p withEvent:(UIEvent*)e {
-    UIView *v = [super hitTest:p withEvent:e];
-    if (!v) return nil;
-    if (self.interactive1 && !self.interactive1.hidden) {
-        CGPoint q = [self.interactive1 convertPoint:p fromView:self];
-        if ([self.interactive1 pointInside:q withEvent:e]) return v;
-    }
-    return nil; // Deixa o toque ir pro jogo
-}
-@end
-
-// ============================================================
-// Toggle Customizado
-// ============================================================
 @interface PurpouToggle : UIView
 @property (nonatomic, assign) BOOL on;
 @property (nonatomic, copy) void (^onChange)(BOOL);
@@ -67,13 +95,11 @@ static PurpouWindow *gGestureWindow = nil;
 @implementation PurpouToggle
 - (instancetype)initWithTitle:(NSString*)title on:(BOOL)on onChange:(void(^)(BOOL))cb {
     if (self = [super init]) {
-        self.on = on;
-        self.onChange = cb;
+        self.on = on; self.onChange = cb;
         self.translatesAutoresizingMaskIntoConstraints = NO;
 
         self.label = [UILabel new];
-        self.label.text = title;
-        self.label.textColor = P_TEXT;
+        self.label.text = title; self.label.textColor = P_TEXT;
         self.label.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
         self.label.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:self.label];
@@ -82,14 +108,12 @@ static PurpouWindow *gGestureWindow = nil;
         track.translatesAutoresizingMaskIntoConstraints = NO;
         track.layer.cornerRadius = 14;
         track.backgroundColor = on ? P_ACCENT : [UIColor colorWithWhite:0.25 alpha:1.0];
-        track.tag = 100;
-        [self addSubview:track];
+        track.tag = 100; [self addSubview:track];
 
         self.knob = [UIView new];
         self.knob.translatesAutoresizingMaskIntoConstraints = NO;
         self.knob.backgroundColor = [UIColor whiteColor];
-        self.knob.layer.cornerRadius = 11;
-        [track addSubview:self.knob];
+        self.knob.layer.cornerRadius = 11; [track addSubview:self.knob];
 
         [NSLayoutConstraint activateConstraints:@[
             [self.label.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
@@ -110,16 +134,13 @@ static PurpouWindow *gGestureWindow = nil;
     }
     return self;
 }
-
 - (void)toggle {
     self.on = !self.on;
     UIView *track = [self viewWithTag:100];
     [UIView animateWithDuration:0.3 delay:0 usingSpringWithDamping:0.6 initialSpringVelocity:1.0 options:0 animations:^{
         track.backgroundColor = self.on ? P_ACCENT : [UIColor colorWithWhite:0.25 alpha:1.0];
         for (NSLayoutConstraint *c in self.knob.superview.constraints) {
-            if (c.firstItem == self.knob && c.firstAttribute == NSLayoutAttributeLeading) {
-                c.constant = self.on ? 27 : 3;
-            }
+            if (c.firstItem == self.knob && c.firstAttribute == NSLayoutAttributeLeading) c.constant = self.on ? 27 : 3;
         }
         [self layoutIfNeeded];
     } completion:nil];
@@ -127,32 +148,18 @@ static PurpouWindow *gGestureWindow = nil;
 }
 @end
 
-// ============================================================
-// Menu Principal
-// ============================================================
-@interface PurpouMenuVC : UIViewController
-@end
-
+@interface PurpouMenuVC : UIViewController @end
 @implementation PurpouMenuVC {
-    NSArray *tabTitles;
-    NSInteger currentTab;
-    UIView *contentArea;
-    UIView *tabButtonsBar;
+    NSArray *tabTitles; NSInteger currentTab;
+    UIView *contentArea; UIView *tabButtonsBar;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor clearColor];
     tabTitles = @[@"Veículos", @"Money", @"Automático"];
-    currentTab = 0;
-    [self buildMenu];
-
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(hideForAd) name:UIWindowDidBecomeVisibleNotification object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(showAfterAd) name:UIWindowDidBecomeHiddenNotification object:nil];
+    currentTab = 0; [self buildMenu];
 }
-
-- (void)hideForAd { if (gMenuContainer) gMenuContainer.hidden = YES; }
-- (void)showAfterAd { if (gMenuContainer) gMenuContainer.hidden = NO; }
 
 - (void)buildMenu {
     gMenuContainer = [UIView new];
@@ -181,8 +188,7 @@ static PurpouWindow *gGestureWindow = nil;
     [gMenuContainer addSubview:topBar];
 
     UILabel *title = [UILabel new];
-    title.text = @"PURPOU CHEATS";
-    title.textColor = P_TEXT;
+    title.text = @"PURPOU CHEATS"; title.textColor = P_TEXT;
     title.font = [UIFont boldSystemFontOfSize:15];
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [topBar addSubview:title];
@@ -204,8 +210,7 @@ static PurpouWindow *gGestureWindow = nil;
         [title.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
         [minBtn.trailingAnchor constraintEqualToAnchor:topBar.trailingAnchor constant:-12],
         [minBtn.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
-        [minBtn.widthAnchor constraintEqualToConstant:34],
-        [minBtn.heightAnchor constraintEqualToConstant:34]
+        [minBtn.widthAnchor constraintEqualToConstant:34], [minBtn.heightAnchor constraintEqualToConstant:34]
     ]];
 
     UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDrag:)];
@@ -219,8 +224,7 @@ static PurpouWindow *gGestureWindow = nil;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     stack.axis = UILayoutConstraintAxisHorizontal;
     stack.distribution = UIStackViewDistributionFillEqually;
-    stack.spacing = 6;
-    [tabButtonsBar addSubview:stack];
+    stack.spacing = 6; [tabButtonsBar addSubview:stack];
 
     for (NSInteger i = 0; i < tabTitles.count; i++) {
         PurpouButton *b = [PurpouButton buttonWithType:UIButtonTypeSystem];
@@ -228,8 +232,7 @@ static PurpouWindow *gGestureWindow = nil;
         [b setTitleColor:(i == 0) ? P_TEXT : P_SUBTEXT forState:UIControlStateNormal];
         b.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
         b.backgroundColor = (i == 0) ? P_ACCENT : P_BG2;
-        b.layer.cornerRadius = 8;
-        b.tag = i;
+        b.layer.cornerRadius = 8; b.tag = i;
         [b addTarget:self action:@selector(tabTapped:) forControlEvents:UIControlEventTouchUpInside];
         [stack addArrangedSubview:b];
     }
@@ -273,27 +276,23 @@ static PurpouWindow *gGestureWindow = nil;
 - (void)renderTab:(NSInteger)tab {
     for (UIView *v in contentArea.subviews) [v removeFromSuperview];
     UIStackView *col = [UIStackView new];
-    col.axis = UILayoutConstraintAxisVertical;
-    col.spacing = 10;
-    col.translatesAutoresizingMaskIntoConstraints = NO;
-    [contentArea addSubview:col];
+    col.axis = UILayoutConstraintAxisVertical; col.spacing = 10;
+    col.translatesAutoresizingMaskIntoConstraints = NO; [contentArea addSubview:col];
     [NSLayoutConstraint activateConstraints:@[
         [col.topAnchor constraintEqualToAnchor:contentArea.topAnchor],
         [col.leadingAnchor constraintEqualToAnchor:contentArea.leadingAnchor],
         [col.trailingAnchor constraintEqualToAnchor:contentArea.trailingAnchor]
     ]];
-
     PurpouHooks *h = [PurpouHooks shared];
-
-    if (tab == 0) { // Veículos
+    if (tab == 0) {
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Desbloquear Todos" on:NO onChange:^(BOOL on){ [h toggleUnlockVehicles:on]; }]];
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Velocidade Máxima" on:NO onChange:^(BOOL on){ [h toggleSpeed:on]; }]];
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Aceleração Turbo" on:NO onChange:^(BOOL on){ [h toggleAcceleration:on]; }]];
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Sem Dano" on:NO onChange:^(BOOL on){ [h toggleNoDamage:on]; }]];
-    } else if (tab == 1) { // Money
+    } else if (tab == 1) {
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Dinheiro Infinito" on:NO onChange:^(BOOL on){ [h toggleMoney:on]; }]];
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Auto Salvar" on:YES onChange:^(BOOL on){ }]];
-    } else { // Automático
+    } else {
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Auto CNH" on:NO onChange:^(BOOL on){ [h toggleAutoCNH:on]; }]];
     }
 }
@@ -309,89 +308,36 @@ static PurpouWindow *gGestureWindow = nil;
         gMenuContainer.transform = CGAffineTransformMakeScale(0.1, 0.1);
         gMenuContainer.alpha = 0;
     } completion:^(BOOL finished) {
-        // Apenas esconde, não destrói. Assim o gesto continua funcionando.
         gOverlayWindow.hidden = YES;
         gOverlayWindow = nil;
         gMenuContainer = nil;
-        
-        if (gGestureWindow) {
-            gGestureWindow.hidden = NO;
-        }
     }];
 }
-
 @end
 
-// ============================================================
-// Inicialização do Menu e Detector de Gestos
-// ============================================================
 @implementation PurpouMenu
-
 + (instancetype)shared {
     static PurpouMenu *inst = nil;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        inst = [PurpouMenu new];
-    });
-    [inst checkAndSetupGesture];
+    dispatch_once(&once, ^{ inst = [PurpouMenu new]; });
     return inst;
-}
-
-- (void)checkAndSetupGesture {
-    if (!gGestureWindow) {
-        [self setupGestureDetector];
-    }
-}
-
-- (void)setupGestureDetector {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindowScene *scene = nil;
-        for (UIScene *s in [UIApplication sharedApplication].connectedScenes)
-            if ([s isKindOfClass:[UIWindowScene class]]) { scene = (UIWindowScene*)s; break; }
-
-        gGestureWindow = scene ? [[PurpouWindow alloc] initWithWindowScene:scene] : [[PurpouWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-        gGestureWindow.frame = [UIScreen mainScreen].bounds;
-        gGestureWindow.windowLevel = UIWindowLevelAlert + 2000;
-        gGestureWindow.backgroundColor = [UIColor clearColor];
-        gGestureWindow.hidden = NO;
-        gGestureWindow.userInteractionEnabled = YES;
-        gGestureWindow.rootViewController = [UIViewController new];
-
-        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleGesture:)];
-        tap.numberOfTouchesRequired = 3;
-        tap.numberOfTapsRequired = 5;
-        tap.cancelsTouchesInView = NO; 
-        [gGestureWindow addGestureRecognizer:tap];
-    });
-}
-
-- (void)handleGesture:(UITapGestureRecognizer *)gesture {
-    if (gesture.state == UIGestureRecognizerStateEnded) {
-        NSLog(@"[PURPOU] Gesto detectado! Abrindo menu...");
-        [self show];
-    }
 }
 
 - (void)show {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (gOverlayWindow) return;
-
         UIWindowScene *scene = nil;
         for (UIScene *s in [UIApplication sharedApplication].connectedScenes)
             if ([s isKindOfClass:[UIWindowScene class]]) { scene = (UIWindowScene*)s; break; }
-
-        PurpouWindow *win = scene ? [[PurpouWindow alloc] initWithWindowScene:scene]
-                                  : [[PurpouWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        PurpouWindow *win = scene ? [[PurpouWindow alloc] initWithWindowScene:scene] : [[PurpouWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
         win.frame = [UIScreen mainScreen].bounds;
         win.windowLevel = UIWindowLevelAlert + 1000;
         win.backgroundColor = [UIColor clearColor];
         gOverlayWindow = win;
-
         PurpouMenuVC *vc = [PurpouMenuVC new];
         win.rootViewController = vc;
         win.hidden = NO;
         [win makeKeyAndVisible];
-
         win.interactive1 = gMenuContainer;
     });
 }
@@ -402,6 +348,13 @@ static PurpouWindow *gGestureWindow = nil;
         gOverlayWindow = nil;
         gMenuContainer = nil;
     });
+}
+
+// AQUI ESTÁ O SEGREDO: Hook na UIWindow!
+- (void)setupHooks {
+    Class windowClass = objc_getClass("UIWindow");
+    MSHookMessageEx(windowClass, @selector(touchesBegan:withEvent:), (IMP)hooked_touchesBegan, (IMP *)&orig_touchesBegan);
+    NSLog(@"[PURPOU] Hook de toque instalado!");
 }
 
 @end
