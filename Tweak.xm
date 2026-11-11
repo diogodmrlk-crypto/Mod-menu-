@@ -2,11 +2,11 @@
 #import "Menu.h"
 
 %ctor {
-    // 1. Inicia os hooks de memória (Dinheiro, CNH, etc)
+    // Inicia os hooks de memória (RVAs achadas)
     [[PurpouHooks shared] setup];
     
-    // 2. Instala o hook na UIWindow pra capturar os 3 dedos
+    // Instala o hook de gesto de 3 dedos
     [[PurpouMenu shared] setupHooks];
     
-    NSLog(@"[PURPOU] Carregado. Faça 5 toques seguidos com 3 dedos para abrir.");
+    NSLog(@"[PURPOU] Carregado. Faça o gesto de 3 dedos (5x) para abrir o menu.");
 }
