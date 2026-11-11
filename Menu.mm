@@ -7,7 +7,8 @@
 static PurpouWindow *gOverlayWindow = nil;
 static UIView *gMenuContainer = nil;
 static UIView *gMiniBar = nil;
-static BOOL gIsMinimized = YES; // Começa minimizado
+static UIView *gFovCircle = nil;
+static BOOL gIsMinimized = YES;
 
 // ============================================================
 // Cores do Menu
@@ -70,6 +71,53 @@ static BOOL gIsMinimized = YES; // Começa minimizado
 @end
 
 // ============================================================
+// Slider Customizado (FOV)
+// ============================================================
+@interface PurpouSlider : UIView
+@property (nonatomic, assign) float value;
+@property (nonatomic, copy) void (^onChange)(float);
+@property (nonatomic, strong) UISlider *slider;
+@property (nonatomic, strong) UILabel *label;
+@end
+
+@implementation PurpouSlider
+- (instancetype)initWithTitle:(NSString*)title min:(float)min max:(float)max value:(float)val onChange:(void(^)(float))cb {
+    if (self = [super init]) {
+        self.value = val; self.onChange = cb;
+        self.translatesAutoresizingMaskIntoConstraints = NO;
+        
+        self.label = [UILabel new];
+        self.label.text = [NSString stringWithFormat:@"%@: %.0f", title, val];
+        self.label.textColor = C_TEXT;
+        self.label.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+        self.label.translatesAutoresizingMaskIntoConstraints = NO;
+        [self addSubview:self.label];
+
+        self.slider = [UISlider new];
+        self.slider.minimumValue = min; self.slider.maximumValue = max; self.slider.value = val;
+        self.slider.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.slider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
+        [self addSubview:self.slider];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [self.label.topAnchor constraintEqualToAnchor:self.topAnchor],
+            [self.label.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
+            [self.slider.topAnchor constraintEqualToAnchor:self.label.bottomAnchor constant:8],
+            [self.slider.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
+            [self.slider.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+            [self.heightAnchor constraintEqualToConstant:50]
+        ]];
+    }
+    return self;
+}
+- (void)sliderChanged:(UISlider*)s {
+    self.value = s.value;
+    self.label.text = [NSString stringWithFormat:@"%@: %.0f", self.label.text, s.value];
+    if (self.onChange) self.onChange(s.value);
+}
+@end
+
+// ============================================================
 // PurpouWindow
 // ============================================================
 @interface PurpouWindow : UIWindow
@@ -107,12 +155,12 @@ static BOOL gIsMinimized = YES; // Começa minimizado
 }
 
 - (void)buildLayout {
-    // 1. Menu Grande
+    // 1. Menu Grande (Diminuído)
     gMenuContainer = [UIView new];
     gMenuContainer.translatesAutoresizingMaskIntoConstraints = NO;
     gMenuContainer.backgroundColor = C_BG;
     gMenuContainer.layer.cornerRadius = 12;
-    gMenuContainer.hidden = YES; // Começa escondido
+    gMenuContainer.hidden = YES;
     [self.view addSubview:gMenuContainer];
     
     UIPanGestureRecognizer *panMenu = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDragMenu:)];
@@ -121,8 +169,8 @@ static BOOL gIsMinimized = YES; // Começa minimizado
     [NSLayoutConstraint activateConstraints:@[
         [gMenuContainer.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [gMenuContainer.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
-        [gMenuContainer.widthAnchor constraintEqualToConstant:650], 
-        [gMenuContainer.heightAnchor constraintEqualToConstant:380]
+        [gMenuContainer.widthAnchor constraintEqualToConstant:420], 
+        [gMenuContainer.heightAnchor constraintEqualToConstant:280]
     ]];
 
     UIView *sidebar = [UIView new];
@@ -136,16 +184,16 @@ static BOOL gIsMinimized = YES; // Começa minimizado
         [sidebar.topAnchor constraintEqualToAnchor:gMenuContainer.topAnchor],
         [sidebar.leadingAnchor constraintEqualToAnchor:gMenuContainer.leadingAnchor],
         [sidebar.bottomAnchor constraintEqualToAnchor:gMenuContainer.bottomAnchor],
-        [sidebar.widthAnchor constraintEqualToConstant:180]
+        [sidebar.widthAnchor constraintEqualToConstant:130] // Sidebar menor
     ]];
     
     UILabel *title = [UILabel new];
     title.text = @"PURPOU DEV"; title.textColor = C_TEXT;
-    title.font = [UIFont boldSystemFontOfSize:18]; 
+    title.font = [UIFont boldSystemFontOfSize:14]; 
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [sidebar addSubview:title];
     
-    // BOTÃO X (Minimizar de volta pra barrinha)
+    // BOTÃO X (Minimizar)
     UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [closeBtn setTitle:@"X" forState:UIControlStateNormal];
     [closeBtn setTitleColor:[UIColor redColor] forState:UIControlStateNormal];
@@ -155,9 +203,9 @@ static BOOL gIsMinimized = YES; // Começa minimizado
     [sidebar addSubview:closeBtn];
 
     [NSLayoutConstraint activateConstraints:@[
-        [title.topAnchor constraintEqualToAnchor:sidebar.topAnchor constant:20],
-        [title.leadingAnchor constraintEqualToAnchor:sidebar.leadingAnchor constant:20],
-        [closeBtn.trailingAnchor constraintEqualToAnchor:sidebar.trailingAnchor constant:-15],
+        [title.topAnchor constraintEqualToAnchor:sidebar.topAnchor constant:15],
+        [title.leadingAnchor constraintEqualToAnchor:sidebar.leadingAnchor constant:10],
+        [closeBtn.trailingAnchor constraintEqualToAnchor:sidebar.trailingAnchor constant:-10],
         [closeBtn.centerYAnchor constraintEqualToAnchor:title.centerYAnchor],
         [closeBtn.widthAnchor constraintEqualToConstant:30], 
         [closeBtn.heightAnchor constraintEqualToConstant:30]
@@ -170,9 +218,9 @@ static BOOL gIsMinimized = YES; // Começa minimizado
     [sidebar addSubview:stack];
     
     [NSLayoutConstraint activateConstraints:@[
-        [stack.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:30],
-        [stack.leadingAnchor constraintEqualToAnchor:sidebar.leadingAnchor constant:10],
-        [stack.trailingAnchor constraintEqualToAnchor:sidebar.trailingAnchor constant:-10]
+        [stack.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:20],
+        [stack.leadingAnchor constraintEqualToAnchor:sidebar.leadingAnchor constant:5],
+        [stack.trailingAnchor constraintEqualToAnchor:sidebar.trailingAnchor constant:-5]
     ]];
     
     for (int i=0; i<tabNames.count; i++) {
@@ -180,7 +228,7 @@ static BOOL gIsMinimized = YES; // Começa minimizado
         [btn setTitle:tabNames[i] forState:UIControlStateNormal];
         [btn setTitleColor:(i==0)?C_ACCENT:C_SUBTEXT forState:UIControlStateNormal];
         [btn setContentHorizontalAlignment:UIControlContentHorizontalAlignmentLeft];
-        btn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+        btn.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
         btn.tag = i; 
         [btn addTarget:self action:@selector(tabTapped:) forControlEvents:UIControlEventTouchUpInside];
         [stack addArrangedSubview:btn];
@@ -244,6 +292,28 @@ static BOOL gIsMinimized = YES; // Começa minimizado
         [expandBtn.widthAnchor constraintEqualToConstant:30], 
         [expandBtn.heightAnchor constraintEqualToConstant:30]
     ]];
+}
+
+// FOV Circle (Apenas visual)
+- (void)showFovCircle:(BOOL)show {
+    if (show && !gFovCircle) {
+        gFovCircle = [UIView new];
+        gFovCircle.translatesAutoresizingMaskIntoConstraints = NO;
+        gFovCircle.backgroundColor = [UIColor clearColor];
+        gFovCircle.layer.borderColor = [UIColor whiteColor].CGColor;
+        gFovCircle.layer.borderWidth = 1;
+        gFovCircle.layer.cornerRadius = 75;
+        [self.view addSubview:gFovCircle];
+        [NSLayoutConstraint activateConstraints:@[
+            [gFovCircle.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+            [gFovCircle.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+            [gFovCircle.widthAnchor constraintEqualToConstant:150],
+            [gFovCircle.heightAnchor constraintEqualToConstant:150]
+        ]];
+    } else if (!show && gFovCircle) {
+        [gFovCircle removeFromSuperview];
+        gFovCircle = nil;
+    }
 }
 
 // ============================================================
@@ -315,18 +385,30 @@ static BOOL gIsMinimized = YES; // Começa minimizado
     [NSLayoutConstraint activateConstraints:@[
         [col.centerXAnchor constraintEqualToAnchor:contentArea.centerXAnchor],
         [col.centerYAnchor constraintEqualToAnchor:contentArea.centerYAnchor],
-        [col.widthAnchor constraintEqualToConstant:300]
+        [col.widthAnchor constraintEqualToConstant:250]
     ]];
     
     PurpouHooks *h = [PurpouHooks shared];
-    if (tab == 0) {
-        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Enable ESP" on:NO onChange:^(BOOL on){ [h setESPEnabled:on]; }]];
-        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Draw Boxes" on:YES onChange:^(BOOL on){}]];
-    } else if (tab == 1) {
-        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Aimbot Head" on:NO onChange:^(BOOL on){ [h setAimbotEnabled:on]; }]];
-    } else if (tab == 4) {
-        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Dinheiro x10" on:NO onChange:^(BOOL on){ [h toggleMoney:on]; }]];
-        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Auto CNH" on:NO onChange:^(BOOL on){ [h toggleAutoCNH:on]; }]];
+    if (tab == 0) { // Visuals
+        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"ESP Box" on:NO onChange:^(BOOL on){ [h setESPEnabled:on]; }]];
+        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"ESP Tracer" on:NO onChange:^(BOOL on){}]];
+        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"ESP Name" on:NO onChange:^(BOOL on){}]];
+    } else if (tab == 1) { // Assistance
+        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Aimbot" on:NO onChange:^(BOOL on){ 
+            [h setAimbotEnabled:on]; 
+            [self showFovCircle:on];
+        }]];
+        [col addArrangedSubview:[[PurpouSlider alloc] initWithTitle:@"FOV Slider" min:50 max:300 value:150 onChange:^(float v){
+            // Atualiza o raio do FOV visual
+            gFovCircle.layer.cornerRadius = v / 2;
+            [gFovCircle.constraints enumerateObjectsUsingBlock:^(NSLayoutConstraint *c, NSUInteger idx, BOOL *stop) {
+                if (c.firstAttribute == NSLayoutAttributeWidth || c.firstAttribute == NSLayoutAttributeHeight) c.constant = v;
+            }];
+            [self.view layoutIfNeeded];
+        }]];
+    } else if (tab == 4) { // Misc
+        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Speed Hack" on:NO onChange:^(BOOL on){}]];
+        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"No Clip" on:NO onChange:^(BOOL on){}]];
     }
 }
 @end
@@ -352,20 +434,23 @@ static BOOL gIsMinimized = YES; // Começa minimizado
         win.frame = [UIScreen mainScreen].bounds;
         win.windowLevel = UIWindowLevelAlert + 1000;
         win.backgroundColor = [UIColor clearColor];
-        gOverlayWindow = win;
         
-        PurpouMenuVC *vc = [PurpouMenuVC new];
-        win.rootViewController = vc;
+        // Força orientação vertical
+        win.rootViewController = [PurpouMenuVC new];
+        if (@available(iOS 16.0, *)) {
+            [win.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
+        }
+        
+        gOverlayWindow = win;
         win.hidden = NO;
         [win makeKeyAndVisible];
         
-        win.interactive1 = vc.view;
+        win.interactive1 = win.rootViewController.view;
     });
 }
 
 - (void)showMinimized {
     [self show];
-    // A UI já nasce minimizada (gMiniBar visível, gMenuContainer escondido)
 }
 
 - (void)hide {
@@ -374,6 +459,7 @@ static BOOL gIsMinimized = YES; // Começa minimizado
         gOverlayWindow = nil;
         gMenuContainer = nil;
         gMiniBar = nil;
+        gFovCircle = nil;
     });
 }
 @end
