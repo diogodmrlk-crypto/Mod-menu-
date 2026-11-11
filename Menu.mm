@@ -139,6 +139,28 @@ static BOOL gAutoDrive = NO;
     tabTitles = @[@"Veículos", @"Money", @"Automático"];
     currentTab = 0;
     [self buildMenu];
+
+    // ESCONDE O MENU QUANDO O ANÚNCIO APARECE
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(hideForAd)
+                                                 name:UIWindowDidBecomeVisibleNotification
+                                               object:nil];
+    
+    // MOSTRA O MENU QUANDO O ANÚNCIO FECHA
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(showAfterAd)
+                                                 name:UIWindowDidBecomeHiddenNotification
+                                               object:nil];
+}
+
+- (void)hideForAd {
+    gMenuContainer.hidden = YES;
+    gFloatingButton.hidden = YES;
+}
+
+- (void)showAfterAd {
+    if (gFloatingButton) gFloatingButton.hidden = NO;
+    if (gMenuContainer) gMenuContainer.hidden = NO;
 }
 
 - (void)buildMenu {
@@ -282,7 +304,6 @@ static BOOL gAutoDrive = NO;
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Auto Salvar" on:YES onChange:^(BOOL on){ }]];
     } else { // Automático
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Auto CNH" on:NO onChange:^(BOOL on){ [h toggleAutoCNH:on]; }]];
-        [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Auto Coleta (requer jailbreak)" on:NO onChange:^(BOOL on){ }]];
     }
 }
 
