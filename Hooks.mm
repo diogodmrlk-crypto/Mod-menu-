@@ -1,10 +1,14 @@
 #import "Hooks.h"
+#import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #include <mach-o/dyld.h>
 #include <string.h>
 #include <mach/mach.h>
 #include <mach/vm_map.h>
 
+// ============================================================
+// Helpers de Memória
+// ============================================================
 static uintptr_t getFrameworkBase(const char *name) {
     for (uint32_t i = 0; i < _dyld_image_count(); i++) {
         const char *n = _dyld_get_image_name(i);
@@ -12,6 +16,7 @@ static uintptr_t getFrameworkBase(const char *name) {
     }
     return 0;
 }
+
 static bool safeRead(void *addr, void *buf, size_t size) {
     if (!addr || !buf || size == 0) return false;
     uintptr_t a = (uintptr_t)addr;
@@ -47,7 +52,7 @@ static void drawESP() {
     
     [gESPOverlay.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
     
-    // Teste visual: desenha um quadrado no centro
+    // Teste visual: desenha um quadrado no centro da tela
     CGSize screenSize = [UIScreen mainScreen].bounds.size;
     CGRect boxRect = CGRectMake(screenSize.width/2 - 30, screenSize.height/2 - 50, 60, 100);
     
@@ -63,28 +68,34 @@ static void drawESP() {
     dispatch_once(&once, ^{ inst = [PurpouHooks new]; });
     return inst;
 }
+
 - (void)setup {
     gUnityBase = getFrameworkBase("UnityFramework");
     if (!gUnityBase) return;
+
     dispatch_async(dispatch_get_main_queue(), ^{
         UIWindowScene *scene = nil;
         for (UIScene *s in [UIApplication sharedApplication].connectedScenes)
             if ([s isKindOfClass:[UIWindowScene class]]) { scene = (UIWindowScene*)s; break; }
+        
         UIWindow *win = scene ? [[UIWindow alloc] initWithWindowScene:scene] : [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-        win.windowLevel = UIWindowLevelNormal - 1;
+        win.windowLevel = UIWindowLevelNormal - 1; // Fica atrás do menu, mas na frente do jogo
         win.backgroundColor = [UIColor clearColor];
-        win.userInteractionEnabled = NO;
+        win.userInteractionEnabled = NO; // Deixa o toque passar pro jogo
         win.rootViewController = [UIViewController new];
         win.hidden = NO;
         gESPOverlay = win.rootViewController.view;
     });
+
     dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
     dispatch_source_set_timer(timer, DISPATCH_TIME_NOW, 16 * NSEC_PER_MSEC, 0);
     dispatch_source_set_event_handler(timer, ^{ drawESP(); });
     dispatch_resume(timer);
 }
+
 - (void)setESPEnabled:(BOOL)on { gESPOn = on; }
 - (void)setAimbotEnabled:(BOOL)on { gAimbotOn = on; }
-- (void)toggleMoney:(BOOL)on {}
-- (void)toggleAutoCNH:(BOOL)on {}
+- (void)toggleMoney:(BOOL)on { NSLog(@"[PURPOU] Dinheiro chamado"); }
+- (void)toggleAutoCNH:(BOOL)on { NSLog(@"[PURPOU] CNH chamado"); }
+
 @end
