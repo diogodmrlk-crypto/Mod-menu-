@@ -4,11 +4,12 @@
 
 @class PurpouWindow;
 
+// ============================================================
+// Variáveis Globais
+// ============================================================
 static PurpouWindow *gOverlayWindow = nil;
 static UIView *gMenuContainer = nil;
-static BOOL gVehicleESP = NO;
-static BOOL gMoneyInf = NO;
-static BOOL gAutoDrive = NO;
+static UIWindow *gGestureWindow = nil;
 
 #define P_BG        [UIColor colorWithRed:0.08 green:0.08 blue:0.10 alpha:0.97]
 #define P_BG2       [UIColor colorWithRed:0.13 green:0.13 blue:0.16 alpha:1.0]
@@ -16,6 +17,9 @@ static BOOL gAutoDrive = NO;
 #define P_TEXT      [UIColor colorWithWhite:0.95 alpha:1.0]
 #define P_SUBTEXT   [UIColor colorWithWhite:0.6 alpha:1.0]
 
+// ============================================================
+// Custom Button
+// ============================================================
 @interface PurpouButton : UIButton @end
 @implementation PurpouButton
 - (void)touchesBegan:(NSSet<UITouch*>*)t withEvent:(UIEvent*)e {
@@ -32,6 +36,9 @@ static BOOL gAutoDrive = NO;
 }
 @end
 
+// ============================================================
+// PassThroughWindow (Para o menu não bloquear o jogo)
+// ============================================================
 @interface PurpouWindow : UIWindow
 @property (nonatomic, weak) UIView *interactive1;
 @end
@@ -43,10 +50,13 @@ static BOOL gAutoDrive = NO;
         CGPoint q = [self.interactive1 convertPoint:p fromView:self];
         if ([self.interactive1 pointInside:q withEvent:e]) return v;
     }
-    return nil;
+    return nil; // Passa o toque pro jogo
 }
 @end
 
+// ============================================================
+// Toggle Customizado
+// ============================================================
 @interface PurpouToggle : UIView
 @property (nonatomic, assign) BOOL on;
 @property (nonatomic, copy) void (^onChange)(BOOL);
@@ -117,6 +127,9 @@ static BOOL gAutoDrive = NO;
 }
 @end
 
+// ============================================================
+// Menu Principal
+// ============================================================
 @interface PurpouMenuVC : UIViewController
 @end
 
@@ -134,11 +147,12 @@ static BOOL gAutoDrive = NO;
     currentTab = 0;
     [self buildMenu];
 
+    // Observadores pra esconder o menu quando um Ad aparecer
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(hideForAd) name:UIWindowDidBecomeVisibleNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(showAfterAd) name:UIWindowDidBecomeHiddenNotification object:nil];
 }
 
-- (void)hideForAd { gMenuContainer.hidden = YES; }
+- (void)hideForAd { if (gMenuContainer) gMenuContainer.hidden = YES; }
 - (void)showAfterAd { if (gMenuContainer) gMenuContainer.hidden = NO; }
 
 - (void)buildMenu {
@@ -304,13 +318,50 @@ static BOOL gAutoDrive = NO;
 
 @end
 
+// ============================================================
+// Inicialização do Menu e Detector de Gestos
+// ============================================================
 @implementation PurpouMenu
 
 + (instancetype)shared {
     static PurpouMenu *inst = nil;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ inst = [PurpouMenu new]; });
+    dispatch_once(&once, ^{
+        inst = [PurpouMenu new];
+        [inst setupGestureDetector]; // Inicia o detector ao criar a instância
+    });
     return inst;
+}
+
+- (void)setupGestureDetector {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIWindowScene *scene = nil;
+        for (UIScene *s in [UIApplication sharedApplication].connectedScenes)
+            if ([s isKindOfClass:[UIWindowScene class]]) { scene = (UIWindowScene*)s; break; }
+
+        // Cria uma janela transparente que não bloqueia o toque do jogo
+        gGestureWindow = scene ? [[UIWindow alloc] initWithWindowScene:scene] : [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        gGestureWindow.frame = [UIScreen mainScreen].bounds;
+        gGestureWindow.windowLevel = UIWindowLevelAlert + 2000;
+        gGestureWindow.backgroundColor = [UIColor clearColor];
+        gGestureWindow.hidden = NO;
+        gGestureWindow.userInteractionEnabled = YES;
+        gGestureWindow.rootViewController = [UIViewController new];
+
+        // Adiciona o gesto de 3 dedos e 5 toques
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleGesture:)];
+        tap.numberOfTouchesRequired = 3;
+        tap.numberOfTapsRequired = 5;
+        tap.cancelsTouchesInView = NO; // IMPORTANTE: deixa o jogo receber o toque
+        [gGestureWindow addGestureRecognizer:tap];
+    });
+}
+
+- (void)handleGesture:(UITapGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateEnded) {
+        NSLog(@"[PURPOU] Gesto detectado! Abrindo menu...");
+        [self show];
+    }
 }
 
 - (void)show {
