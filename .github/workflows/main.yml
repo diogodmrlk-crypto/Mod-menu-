@@ -27,4 +27,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PurpouMenu-Dylib
-          path: .theos/obj/arm64/*.dylib
+          path: .theos/obj/arm64/PurpouMenu.dylib
