@@ -2,6 +2,9 @@
 #import "Hooks.h"
 #import <objc/runtime.h>
 
+// Forward declaration pra o compilador saber que PurpouWindow existe
+@class PurpouWindow;
+
 // ============================================================
 // Estado global
 // ============================================================
