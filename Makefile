@@ -10,8 +10,8 @@ PurpouMenu_FILES = Tweak.xm Menu.mm Hooks.mm
 # Flags: ARC, C++17, e silenciar warnings
 PurpouMenu_CFLAGS = -fobjc-arc -std=c++17 -Wno-error -Wno-unused-function -Wno-unused-variable
 
-# Linkagem (Substrate, Dobby ou dynamic_lookup)
-PurpouMenu_LDFLAGS = -undefined dynamic_lookup -lsubstrate
+# Linkagem: REMOVIDO o Substrate, ADICIONADO o Dobby
+PurpouMenu_LDFLAGS = -undefined dynamic_lookup -L$(THEOS_PROJECT_DIR)/lib -lDobby
 PurpouMenu_FRAMEWORKS = UIKit Foundation QuartzCore Security
 
 include $(THEOS)/makefiles/common.mk
