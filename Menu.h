@@ -5,4 +5,5 @@
 + (instancetype)shared;
 - (void)show;
 - (void)hide;
+- (void)checkAndSetupGesture; // <--- ADICIONADO AQUI
 @end
