@@ -1,8 +1,12 @@
 #import "Hooks.h"
 #import <objc/runtime.h>
-#import <substrate.h>
 #include <mach-o/dyld.h>
 #include <string.h>
+#include <mach/mach.h>
+#include <mach/vm_map.h>
+
+// Declaração do Dobby
+extern "C" int DobbyHook(void* address, void* replace, void** origin);
 
 // ============================================================
 // Memory helpers
@@ -15,14 +19,6 @@ static uintptr_t getFrameworkBase(const char *name) {
     return 0;
 }
 
-static bool safeRead(void *addr, void *buf, size_t size) {
-    if (!addr || !buf || size == 0) return false;
-    uintptr_t a = (uintptr_t)addr;
-    if (a < 0x100000000ULL) return false;
-    vm_size_t out = 0;
-    return vm_read_overwrite(mach_task_self(), (vm_address_t)a, size, (vm_address_t)buf, &out) == KERN_SUCCESS && out == size;
-}
-
 static bool safeWrite(void *addr, const void *buf, size_t size) {
     if (!addr || !buf || size == 0) return false;
     uintptr_t a = (uintptr_t)addr;
@@ -32,16 +28,12 @@ static bool safeWrite(void *addr, const void *buf, size_t size) {
 }
 
 // ============================================================
-// Offsets (do dump.cs)
+// Offsets
 // ============================================================
-#define OFF_RCCP_ENGINE_MAX_SPEED       0x128
-#define OFF_BIKE_SETTINGS_MAX_SPEED     0x14
-#define OFF_ENGINE_ACCEL_RATE           0x5C
-#define OFF_BIKE_SETTINGS_ACCEL         0x1C
-#define OFF_DAMAGE_MAXIMUM              0x90
+#define OFF_DAMAGE_DATA                 0xD0
+#define OFF_CAIXA_RECOLHER              0x1AE16EC
 #define OFF_CARTEIRA_CREDITAR           0x1E49A28
 #define OFF_HABILITACAO_APROVAR         0x21435E8
-#define OFF_CAIXA_RECOLHER              0x1AE16EC
 
 // ============================================================
 // Estado global
@@ -52,17 +44,10 @@ static BOOL gNoDamageOn = NO;
 static BOOL gAutoDriveOn = NO;
 static BOOL gAutoCollectOn = NO;
 static BOOL gMoneyOn = NO;
-static BOOL gNoAdsOn = NO;
-static BOOL gUnlockVehiclesOn = NO;
-
-static dispatch_source_t gTickTimer = nil;
 
 // ============================================================
-// Funções originais (hooks)
+// Funções originais
 // ============================================================
-typedef void (*OverrideInputs_t)(void *self, void *overridedInputs);
-static OverrideInputs_t orig_OverrideInputs = NULL;
-
 typedef void (*OnCollision_t)(void *self, void *collision);
 static OnCollision_t orig_OnCollision = NULL;
 
@@ -77,62 +62,29 @@ static Creditar_t orig_Creditar = NULL;
 // ============================================================
 static void hooked_OnCollision(void *self, void *collision) {
     if (gNoDamageOn) {
-        // Força o campo "damageData" a ficar em zero após a colisão
-        // O damageData fica no offset 0xD0 do RCCP_Damage
-        uintptr_t selfAddr = (uintptr_t)self;
-        uintptr_t damageDataAddr = selfAddr + 0xD0;
+        uintptr_t damageDataAddr = (uintptr_t)self + OFF_DAMAGE_DATA;
         float zero = 0.0f;
         safeWrite((void*)damageDataAddr, &zero, sizeof(float));
-        return; // não processa colisão
+        return;
     }
     if (orig_OnCollision) orig_OnCollision(self, collision);
 }
 
 static void hooked_RecolherAoPassar(void *self) {
-    if (gAutoCollectOn) {
-        // Chama a função várias vezes por frame pra forçar a coleta
-        if (orig_RecolherAoPassar) {
-            orig_RecolherAoPassar(self);
-            orig_RecolherAoPassar(self);
-            orig_RecolherAoPassar(self);
-        }
+    if (gAutoCollectOn && orig_RecolherAoPassar) {
+        orig_RecolherAoPassar(self);
+        orig_RecolherAoPassar(self);
+        orig_RecolherAoPassar(self);
         return;
     }
     if (orig_RecolherAoPassar) orig_RecolherAoPassar(self);
 }
 
 static BOOL hooked_Creditar(int centavos, NSString *rotulo, int tipo) {
-    if (gMoneyOn) {
-        // Quando o jogo for creditar algo, credita 10x
-        return orig_Creditar ? orig_Creditar(centavos * 10, rotulo, tipo) : NO;
+    if (gMoneyOn && orig_Creditar) {
+        return orig_Creditar(centavos * 10, rotulo, tipo);
     }
     return orig_Creditar ? orig_Creditar(centavos, rotulo, tipo) : NO;
-}
-
-// ============================================================
-// Tick loop (aplica velocidade, aceleração, auto-drive)
-// ============================================================
-static void applySpeedToVehicles(uintptr_t base) {
-    // O RCCP_Engine é filho do CarController. Sem o offset do ponteiro,
-    // varremos a memória próxima ao CarController.
-    // Como fallback, hookamos os campos quando o jogo os lê.
-}
-
-static void tickLoop() {
-    uintptr_t unityBase = getFrameworkBase("UnityFramework");
-    if (!unityBase) return;
-
-    // Auto Drive: força input de acelerar
-    if (gAutoDriveOn) {
-        // O campo throttleInput_V fica no offset 0x180 do RCCP_CarController.
-        // Precisamos achar uma instância ativa. Sem o ponteiro do CarController,
-        // o Auto Drive não consegue ser aplicado em tempo real.
-        // Por enquanto, o toggle fica visual.
-    }
-
-    // Velocidade: precisamos do ponteiro do Engine ativo.
-    // Sem o ponteiro, aplicamos via scan periódico (pesado).
-    // Deixamos o toggle visual por enquanto.
 }
 
 // ============================================================
@@ -148,84 +100,42 @@ static void tickLoop() {
 }
 
 - (void)setup {
-    // Hook OnCollision do RCCP_Damage (Sem Dano)
     uintptr_t unity = getFrameworkBase("UnityFramework");
-    if (unity) {
-        uintptr_t onCollisionAddr = unity + 0x1947D90;
-        MSHookFunction((void*)onCollisionAddr, (void*)hooked_OnCollision, (void**)&orig_OnCollision);
-
-        uintptr_t recolherAddr = unity + 0x1AE16EC;
-        MSHookFunction((void*)recolherAddr, (void*)hooked_RecolherAoPassar, (void**)&orig_RecolherAoPassar);
-
-        uintptr_t creditarAddr = unity + 0x1E49A28;
-        MSHookFunction((void*)creditarAddr, (void*)hooked_Creditar, (void**)&orig_Creditar);
-
-        NSLog(@"[PURPOU] Hooks instalados na base 0x%lx", unity);
-    } else {
+    if (!unity) {
         NSLog(@"[PURPOU] UnityFramework não encontrado.");
+        return;
     }
 
-    // Tick loop (1 Hz por segurança)
-    gTickTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
-    dispatch_source_set_timer(gTickTimer, DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC, 0);
-    dispatch_source_set_event_handler(gTickTimer, ^{ tickLoop(); });
-    dispatch_resume(gTickTimer);
+    // Hook OnCollision (Sem Dano)
+    DobbyHook((void*)(unity + 0x1947D90), (void*)hooked_OnCollision, (void**)&orig_OnCollision);
+
+    // Hook RecolherAoPassar (Auto Coleta)
+    DobbyHook((void*)(unity + OFF_CAIXA_RECOLHER), (void*)hooked_RecolherAoPassar, (void**)&orig_RecolherAoPassar);
+
+    // Hook Creditar (Dinheiro)
+    DobbyHook((void*)(unity + OFF_CARTEIRA_CREDITAR), (void*)hooked_Creditar, (void**)&orig_Creditar);
+
+    NSLog(@"[PURPOU] Hooks instalados.");
 }
 
-- (void)toggleSpeed:(BOOL)on {
-    gSpeedOn = on;
-    NSLog(@"[PURPOU] Velocidade: %d", on);
-}
-
-- (void)toggleAcceleration:(BOOL)on {
-    gAccelOn = on;
-    NSLog(@"[PURPOU] Aceleração: %d", on);
-}
-
-- (void)toggleUnlockVehicles:(BOOL)on {
-    gUnlockVehiclesOn = on;
-    NSLog(@"[PURPOU] Desbloquear veículos: %d (chama Desbloquear em cada veículo do catálogo)", on);
-    // A implementação real precisa iterar CatalogoDeVeiculos.m_Veiculos (0x18)
-    // e chamar PosseDeVeiculos.Desbloquear (0x1B3D54C).
-    // Fica como TODO até termos o ponteiro do catálogo.
-}
-
-- (void)toggleMoney:(BOOL)on {
-    gMoneyOn = on;
-    NSLog(@"[PURPOU] Dinheiro x10: %d", on);
-}
-
-- (void)toggleNoAds:(BOOL)on {
-    gNoAdsOn = on;
-    NSLog(@"[PURPOU] Sem anúncios: %d", on);
-    // Hook em Anuncios.IniciarSdkSeAutorizado (0x2155F48) pra não carregar
-}
-
-- (void)toggleNoDamage:(BOOL)on {
-    gNoDamageOn = on;
-    NSLog(@"[PURPOU] Sem dano: %d", on);
-}
-
-- (void)toggleAutoDrive:(BOOL)on {
-    gAutoDriveOn = on;
-    NSLog(@"[PURPOU] Piloto automático: %d", on);
-}
-
-- (void)toggleAutoCollect:(BOOL)on {
-    gAutoCollectOn = on;
-    NSLog(@"[PURPOU] Auto coleta: %d", on);
-}
+- (void)toggleSpeed:(BOOL)on { gSpeedOn = on; }
+- (void)toggleAcceleration:(BOOL)on { gAccelOn = on; }
+- (void)toggleUnlockVehicles:(BOOL)on { }
+- (void)toggleMoney:(BOOL)on { gMoneyOn = on; }
+- (void)toggleNoAds:(BOOL)on { }
+- (void)toggleNoDamage:(BOOL)on { gNoDamageOn = on; }
+- (void)toggleAutoDrive:(BOOL)on { gAutoDriveOn = on; }
+- (void)toggleAutoCollect:(BOOL)on { gAutoCollectOn = on; }
 
 - (void)toggleAutoCNH:(BOOL)on {
-    NSLog(@"[PURPOU] Auto CNH: %d", on);
     if (!on) return;
     uintptr_t unity = getFrameworkBase("UnityFramework");
     if (!unity) return;
     typedef BOOL (*Aprovar_t)(int tipo, float segundos);
-    Aprovar_t aprovar = (Aprovar_t)(unity + 0x21435E8);
+    Aprovar_t aprovar = (Aprovar_t)(unity + OFF_HABILITACAO_APROVAR);
     if (aprovar) {
-        aprovar(0, 9999.0f); // Carro
-        aprovar(1, 9999.0f); // Moto
+        aprovar(0, 9999.0f);
+        aprovar(1, 9999.0f);
     }
 }
 
