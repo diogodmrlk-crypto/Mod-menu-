@@ -6,4 +6,5 @@
 - (void)show;
 - (void)hide;
 - (void)setupHooks;
+- (void)checkAndSetupGesture;
 @end
