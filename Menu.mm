@@ -3,36 +3,11 @@
 #import <objc/runtime.h>
 #import <UIKit/UIKit.h>
 
-// Declaração do Dobby (substitui o Substrate)
-extern "C" int DobbyHook(void* address, void* replace, void** origin);
-
 @class PurpouWindow;
 static PurpouWindow *gOverlayWindow = nil;
 static UIView *gMenuContainer = nil;
 static UIView *gMiniBar = nil;
-static BOOL gIsMinimized = NO;
-
-// Variáveis do Hook de Toque
-static NSInteger gTapCount = 0;
-static NSTimer *gTapTimer = nil;
-static void (*orig_sendEvent)(id, SEL, UIEvent *);
-
-// A função que substitui a sendEvent: da UIWindow
-static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
-    if (event.type == UIEventTypeTouches) {
-        NSSet *touches = [event allTouches];
-        if (touches.count >= 3) {
-            gTapCount++;
-            [gTapTimer invalidate];
-            gTapTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:NO block:^(NSTimer * _Nonnull timer) { gTapCount = 0; }];
-            if (gTapCount >= 5) {
-                gTapCount = 0;
-                dispatch_async(dispatch_get_main_queue(), ^{ [[PurpouMenu shared] show]; });
-            }
-        }
-    }
-    if (orig_sendEvent) orig_sendEvent(self, _cmd, event);
-}
+static BOOL gIsMinimized = YES; // Começa minimizado
 
 // ============================================================
 // Cores do Menu
@@ -95,7 +70,7 @@ static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
 @end
 
 // ============================================================
-// PurpouWindow (Passa o toque pro jogo)
+// PurpouWindow
 // ============================================================
 @interface PurpouWindow : UIWindow
 @property (nonatomic, weak) UIView *interactive1;
@@ -132,10 +107,12 @@ static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
 }
 
 - (void)buildLayout {
+    // 1. Menu Grande
     gMenuContainer = [UIView new];
     gMenuContainer.translatesAutoresizingMaskIntoConstraints = NO;
     gMenuContainer.backgroundColor = C_BG;
     gMenuContainer.layer.cornerRadius = 12;
+    gMenuContainer.hidden = YES; // Começa escondido
     [self.view addSubview:gMenuContainer];
     
     UIPanGestureRecognizer *panMenu = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDragMenu:)];
@@ -163,11 +140,12 @@ static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
     ]];
     
     UILabel *title = [UILabel new];
-    title.text = @"ONESCRIPT"; title.textColor = C_TEXT;
+    title.text = @"PURPOU DEV"; title.textColor = C_TEXT;
     title.font = [UIFont boldSystemFontOfSize:18]; 
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [sidebar addSubview:title];
     
+    // BOTÃO X (Minimizar de volta pra barrinha)
     UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [closeBtn setTitle:@"X" forState:UIControlStateNormal];
     [closeBtn setTitleColor:[UIColor redColor] forState:UIControlStateNormal];
@@ -219,6 +197,7 @@ static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
         [contentArea.bottomAnchor constraintEqualToAnchor:gMenuContainer.bottomAnchor]
     ]];
 
+    // 2. Barrinha (PURPOU DEV)
     [self buildMiniBar];
     [self renderTab:0];
 }
@@ -230,7 +209,7 @@ static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
     gMiniBar.layer.cornerRadius = 20;
     gMiniBar.layer.borderColor = C_ACCENT.CGColor;
     gMiniBar.layer.borderWidth = 1;
-    gMiniBar.hidden = YES;
+    gMiniBar.hidden = NO; // Começa visível
     [self.view addSubview:gMiniBar];
     
     UIPanGestureRecognizer *panBar = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDragMiniBar:)];
@@ -267,6 +246,9 @@ static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
     ]];
 }
 
+// ============================================================
+// Lógica de Minimizar / Expandir
+// ============================================================
 - (void)minimizeMenu {
     gIsMinimized = YES;
     [UIView animateWithDuration:0.3 animations:^{
@@ -301,6 +283,7 @@ static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
     }];
 }
 
+// Arrastar
 - (void)handleDragMenu:(UIPanGestureRecognizer*)p {
     if (gIsMinimized) return;
     CGPoint t = [p translationInView:self.view];
@@ -315,6 +298,7 @@ static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
     [p setTranslation:CGPointZero inView:self.view];
 }
 
+// Abas
 - (void)tabTapped:(UIButton*)sender {
     currentTab = sender.tag;
     for (UIButton *b in sender.superview.subviews) {
@@ -357,15 +341,6 @@ static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
     return inst;
 }
 
-- (void)setupHooks {
-    // CORRIGIDO AQUI: O cast (void *) foi adicionado
-    Method sendEventMethod = class_getInstanceMethod([UIWindow class], @selector(sendEvent:));
-    void *sendEventAddr = (void *)method_getImplementation(sendEventMethod);
-
-    DobbyHook(sendEventAddr, (void *)hooked_sendEvent, (void **)&orig_sendEvent);
-    NSLog(@"[PURPOU] DobbyHook aplicado na sendEvent:.");
-}
-
 - (void)show {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (gOverlayWindow) return;
@@ -384,8 +359,13 @@ static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
         win.hidden = NO;
         [win makeKeyAndVisible];
         
-        win.interactive1 = gMenuContainer;
+        win.interactive1 = vc.view;
     });
+}
+
+- (void)showMinimized {
+    [self show];
+    // A UI já nasce minimizada (gMiniBar visível, gMenuContainer escondido)
 }
 
 - (void)hide {
@@ -396,6 +376,4 @@ static void hooked_sendEvent(id self, SEL _cmd, UIEvent *event) {
         gMiniBar = nil;
     });
 }
-
-- (void)checkAndSetupGesture {}
 @end
