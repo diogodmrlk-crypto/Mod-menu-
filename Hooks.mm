@@ -24,7 +24,7 @@ static bool safeRead(void *addr, void *buf, size_t size) {
     return vm_read_overwrite(mach_task_self(), (vm_address_t)a, size, (vm_address_t)buf, &out) == KERN_SUCCESS && out == size;
 }
 
-// RVAs do Relatório
+// RVAs
 #define RVA_WORLDTOSCREEN       0x48FF730
 #define RVA_CAMERA_MAIN         0x4900884
 #define RVA_PLAYERSTORAGE_AWAKE 0x33179DC
@@ -33,10 +33,10 @@ static bool safeRead(void *addr, void *buf, size_t size) {
 #define RVA_ENUM_GETCURRENT     0x1405E1C
 #define RVA_TRANSFORMSTORAGE_TRYGET 0x2F94DF4
 #define RVA_GET_POSITION        0x4972278
+#define RVA_UPDATE_GAME         0x2C56100
 
 // Offsets
 #define OFF_PLAYERSTORAGE_ENTITIES 0x18
-#define OFF_TRANSFORMSTORAGE_UNITY 0x20
 #define OFF_UNITYTRANSFORM_VALUE   0x10
 
 typedef void* (*Camera_Main_t)();
@@ -49,6 +49,7 @@ typedef bool (*TransformStorage_TryGet_t)(void* self, void* key, void** entity);
 
 static uintptr_t gUnityBase = 0;
 static BOOL gESPOn = NO;
+static BOOL gAimbotOn = NO;
 static UIView *gESPOverlay = nil;
 static void* gPlayerStorage = nullptr;
 
@@ -83,52 +84,28 @@ static void drawESP() {
     void* entitiesMap = nullptr;
     if (!safeRead((void*)((uintptr_t)gPlayerStorage + OFF_PLAYERSTORAGE_ENTITIES), &entitiesMap, sizeof(void*)) || !entitiesMap) return;
 
-    // Pega o Enumerator
-    // (A assinatura de GetEnumerator retorna a struct Enumerator por valor)
-    // Por isso, alocamos um buffer na stack para receber o resultado
-    uint8_t enumeratorBuffer[64] = {0};
-    // Chamada (passa o ponteiro do map e o buffer)
-    // NOTA: A assinatura exata de GetEnumerator no IL2CPP pode precisar de um ponteiro pra retorno
-    // (func_GetEnumerator é um chute, se não funcionar, o código não crasha)
-    
-    // Loop de jogadores (iteração simplificada)
-    // Como a struct Enumerator é complexa, o código abaixo usa o GetCount (0x3318670) e 
-    // tenta ler os slots diretamente.
-    
+    // Pega a contagem de jogadores (offset 0x28)
     int count = 0;
     if (!safeRead((void*)((uintptr_t)gPlayerStorage + 0x28), &count, sizeof(int))) return;
     if (count <= 0 || count > 100) return;
 
-    // Itera os slots do LongHashMap (simplificado)
-    // O LongHashMap tem o array de dados (T[] data) e slots (LongHashMapSlot[] slots)
-    // O código tenta ler os dados direto.
-    
-    // Desenha uma caixa por jogador
+    // Itera os slots do LongHashMap
     for (int i = 0; i < count; i++) {
-        // Chute de offset pra pegar a Entity (não é garantido)
-        // O ideal seria usar o GetValueByIndex
         void* entity = nullptr;
-        // Tenta ler direto do array de dados (se o map tiver esse campo)
+        // (Aqui a gente chamaria o GetEnumerator, mas sem a assinatura exata, o código não desenha)
         
-        if (!entity) continue;
-        
-        // Tenta pegar o Transform via TransformStorage.TryGet
-        // (O TransformStorage não é singleton, então isso não vai funcionar sem o ponteiro)
-        
-        // TESTE: Desenha um quadrado no centro
+        // TESTE: Desenha um quadrado no centro pra provar que o loop rodou
         CGSize screenSize = [UIScreen mainScreen].bounds.size;
         CGRect boxRect = CGRectMake(screenSize.width/2 - 30, screenSize.height/2 - 50, 60, 100);
-        
         UIView *box = [[UIView alloc] initWithFrame:boxRect];
         box.layer.borderColor = [UIColor redColor].CGColor;
         box.layer.borderWidth = 2.0;
         [gESPOverlay addSubview:box];
-        break; // Só desenha 1 pra teste
+        break;
     }
 }
 
 // Hook do Update
-#define RVA_UPDATE_GAME 0x2C56100
 static void (*orig_Update)(void* self);
 static void hooked_Update(void* self) {
     drawESP();
@@ -176,7 +153,7 @@ static void hooked_Update(void* self) {
 }
 
 - (void)setESPEnabled:(BOOL)on { gESPOn = on; }
-- (void)setAimbotEnabled:(BOOL)on {}
+- (void)setAimbotEnabled:(BOOL)on { gAimbotOn = on; }
 - (void)toggleMoney:(BOOL)on {}
 - (void)toggleAutoCNH:(BOOL)on {}
 @end
