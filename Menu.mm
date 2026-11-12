@@ -9,7 +9,7 @@ static UIView *gMenuContainer = nil;
 static UIView *gMiniBar = nil;
 static UIView *gFovCircle = nil;
 static BOOL gIsMinimized = YES;
-static float gCurrentFov = 150.0f; // Valor padrão
+static float gCurrentFov = 150.0f;
 
 #define C_BG        [UIColor colorWithRed:0.08 green:0.08 blue:0.10 alpha:0.95]
 #define C_SIDEBAR   [UIColor colorWithRed:0.05 green:0.05 blue:0.05 alpha:0.95]
@@ -125,19 +125,12 @@ static float gCurrentFov = 150.0f; // Valor padrão
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *v = [super hitTest:point withEvent:event];
     if (!v) return nil;
-    
-    // Se o toque for no menu ou na barrinha, captura
     if (self.interactive1 && !self.interactive1.hidden) {
         CGPoint p = [self.interactive1 convertPoint:point fromView:self];
         if ([self.interactive1 pointInside:p withEvent:event]) return v;
     }
-    
-    // Se o menu estiver aberto, ignora toques no fundo
-    if (gMenuContainer && !gMenuContainer.hidden) {
-        return v; 
-    }
-    
-    return nil; // Senão, passa pro jogo
+    if (gMenuContainer && !gMenuContainer.hidden) return v; 
+    return nil;
 }
 @end
 
@@ -161,7 +154,7 @@ static float gCurrentFov = 150.0f; // Valor padrão
 }
 
 - (void)buildLayout {
-    // 1. FOV Circle (Invisível por padrão)
+    // 1. FOV Circle
     gFovCircle = [UIView new];
     gFovCircle.translatesAutoresizingMaskIntoConstraints = NO;
     gFovCircle.backgroundColor = [UIColor clearColor];
@@ -218,7 +211,6 @@ static float gCurrentFov = 150.0f; // Valor padrão
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [sidebar addSubview:title];
     
-    // BOTÃO X (Minimizar)
     UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [closeBtn setTitle:@"X" forState:UIControlStateNormal];
     [closeBtn setTitleColor:[UIColor redColor] forState:UIControlStateNormal];
@@ -282,7 +274,7 @@ static float gCurrentFov = 150.0f; // Valor padrão
     gMiniBar.layer.cornerRadius = 20;
     gMiniBar.layer.borderColor = C_ACCENT.CGColor;
     gMiniBar.layer.borderWidth = 1;
-    gMiniBar.hidden = NO; // Começa visível
+    gMiniBar.hidden = NO;
     [self.view addSubview:gMiniBar];
     
     UIPanGestureRecognizer *panBar = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDragMiniBar:)];
@@ -389,7 +381,6 @@ static float gCurrentFov = 150.0f; // Valor padrão
     ]];
     
     PurpouHooks *h = [PurpouHooks shared];
-    __weak typeof(self) weakSelf = self;
     
     if (tab == 0) { // Visuals
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"ESP Box" on:NO onChange:^(BOOL on){ [h setESPEnabled:on]; }]];
@@ -397,12 +388,12 @@ static float gCurrentFov = 150.0f; // Valor padrão
     } else if (tab == 1) { // Assistance
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Aimbot" on:NO onChange:^(BOOL on){ 
             [h setAimbotEnabled:on]; 
-            [weakSelf showFovCircle:on]; // MOSTRA O FOV QUANDO LIGA
+            [self showFovCircle:on]; // CORRIGIDO: Usa self direto
         }]];
         
         [col addArrangedSubview:[[PurpouSlider alloc] initWithTitle:@"FOV" min:50 max:400 value:gCurrentFov onChange:^(float v){
             gCurrentFov = v;
-            [weakSelf updateFovSize:v]; // ATUALIZA O TAMANHO DO FOV NO SLIDER
+            [self updateFovSize:v]; // CORRIGIDO: Usa self direto
         }]];
     } else if (tab == 2) { // Misc
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Speed" on:NO onChange:^(BOOL on){}]];
