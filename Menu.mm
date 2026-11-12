@@ -9,6 +9,7 @@ static UIView *gMenuContainer = nil;
 static UIView *gMiniBar = nil;
 static UIView *gFovCircle = nil;
 static BOOL gIsMinimized = YES;
+static float gCurrentFov = 150.0f; // Valor padrão
 
 #define C_BG        [UIColor colorWithRed:0.08 green:0.08 blue:0.10 alpha:0.95]
 #define C_SIDEBAR   [UIColor colorWithRed:0.05 green:0.05 blue:0.05 alpha:0.95]
@@ -16,6 +17,9 @@ static BOOL gIsMinimized = YES;
 #define C_TEXT      [UIColor whiteColor]
 #define C_SUBTEXT   [UIColor lightGrayColor]
 
+// ============================================================
+// Checkbox Customizado
+// ============================================================
 @interface PurpouToggle : UIView
 @property (nonatomic, assign) BOOL on;
 @property (nonatomic, copy) void (^onChange)(BOOL);
@@ -56,6 +60,7 @@ static BOOL gIsMinimized = YES;
     }
     return self;
 }
+
 - (void)toggle {
     self.on = !self.on;
     self.box.backgroundColor = self.on ? C_ACCENT : [UIColor clearColor];
@@ -63,6 +68,9 @@ static BOOL gIsMinimized = YES;
 }
 @end
 
+// ============================================================
+// Slider Customizado (FOV)
+// ============================================================
 @interface PurpouSlider : UIView
 @property (nonatomic, assign) float value;
 @property (nonatomic, copy) void (^onChange)(float);
@@ -107,6 +115,9 @@ static BOOL gIsMinimized = YES;
 }
 @end
 
+// ============================================================
+// PurpouWindow
+// ============================================================
 @interface PurpouWindow : UIWindow
 @property (nonatomic, weak) UIView *interactive1;
 @end
@@ -121,7 +132,7 @@ static BOOL gIsMinimized = YES;
         if ([self.interactive1 pointInside:p withEvent:event]) return v;
     }
     
-    // Se o menu estiver aberto, e o toque for no fundo, ignora o toque (não passa pro jogo)
+    // Se o menu estiver aberto, ignora toques no fundo
     if (gMenuContainer && !gMenuContainer.hidden) {
         return v; 
     }
@@ -130,6 +141,9 @@ static BOOL gIsMinimized = YES;
 }
 @end
 
+// ============================================================
+// Menu Principal
+// ============================================================
 @interface PurpouMenuVC : UIViewController
 @end
 
@@ -147,7 +161,24 @@ static BOOL gIsMinimized = YES;
 }
 
 - (void)buildLayout {
-    // 1. Menu Grande
+    // 1. FOV Circle (Invisível por padrão)
+    gFovCircle = [UIView new];
+    gFovCircle.translatesAutoresizingMaskIntoConstraints = NO;
+    gFovCircle.backgroundColor = [UIColor clearColor];
+    gFovCircle.layer.borderColor = [UIColor whiteColor].CGColor;
+    gFovCircle.layer.borderWidth = 1.0;
+    gFovCircle.layer.cornerRadius = gCurrentFov / 2;
+    gFovCircle.hidden = YES;
+    [self.view addSubview:gFovCircle];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [gFovCircle.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [gFovCircle.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+        [gFovCircle.widthAnchor constraintEqualToConstant:gCurrentFov],
+        [gFovCircle.heightAnchor constraintEqualToConstant:gCurrentFov]
+    ]];
+
+    // 2. Menu Grande
     gMenuContainer = [UIView new];
     gMenuContainer.translatesAutoresizingMaskIntoConstraints = NO;
     gMenuContainer.backgroundColor = C_BG;
@@ -157,6 +188,9 @@ static BOOL gIsMinimized = YES;
     gMenuContainer.hidden = YES;
     [self.view addSubview:gMenuContainer];
     
+    UIPanGestureRecognizer *panMenu = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDragMenu:)];
+    [gMenuContainer addGestureRecognizer:panMenu];
+
     [NSLayoutConstraint activateConstraints:@[
         [gMenuContainer.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [gMenuContainer.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
@@ -184,6 +218,7 @@ static BOOL gIsMinimized = YES;
     title.translatesAutoresizingMaskIntoConstraints = NO;
     [sidebar addSubview:title];
     
+    // BOTÃO X (Minimizar)
     UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [closeBtn setTitle:@"X" forState:UIControlStateNormal];
     [closeBtn setTitleColor:[UIColor redColor] forState:UIControlStateNormal];
@@ -235,7 +270,7 @@ static BOOL gIsMinimized = YES;
         [contentArea.bottomAnchor constraintEqualToAnchor:gMenuContainer.bottomAnchor]
     ]];
 
-    // 2. Barrinha (PURPOU DEV)
+    // 3. Barrinha (PURPOU DEV)
     [self buildMiniBar];
     [self renderTab:0];
 }
@@ -247,9 +282,12 @@ static BOOL gIsMinimized = YES;
     gMiniBar.layer.cornerRadius = 20;
     gMiniBar.layer.borderColor = C_ACCENT.CGColor;
     gMiniBar.layer.borderWidth = 1;
-    gMiniBar.hidden = NO;
+    gMiniBar.hidden = NO; // Começa visível
     [self.view addSubview:gMiniBar];
     
+    UIPanGestureRecognizer *panBar = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleDragMiniBar:)];
+    [gMiniBar addGestureRecognizer:panBar];
+
     [NSLayoutConstraint activateConstraints:@[
         [gMiniBar.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:20],
         [gMiniBar.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
@@ -281,6 +319,26 @@ static BOOL gIsMinimized = YES;
     ]];
 }
 
+// ============================================================
+// Lógica de FOV
+// ============================================================
+- (void)showFovCircle:(BOOL)show {
+    gFovCircle.hidden = !show;
+}
+
+- (void)updateFovSize:(float)size {
+    gFovCircle.layer.cornerRadius = size / 2;
+    for (NSLayoutConstraint *c in gFovCircle.constraints) {
+        if (c.firstAttribute == NSLayoutAttributeWidth || c.firstAttribute == NSLayoutAttributeHeight) {
+            c.constant = size;
+        }
+    }
+    [self.view layoutIfNeeded];
+}
+
+// ============================================================
+// Minimizar / Expandir
+// ============================================================
 - (void)minimizeMenu {
     gIsMinimized = YES;
     gMenuContainer.hidden = YES;
@@ -295,6 +353,22 @@ static BOOL gIsMinimized = YES;
     if (gOverlayWindow) gOverlayWindow.interactive1 = gMenuContainer;
 }
 
+// Arrastar
+- (void)handleDragMenu:(UIPanGestureRecognizer*)p {
+    if (gIsMinimized) return;
+    CGPoint t = [p translationInView:self.view];
+    gMenuContainer.center = CGPointMake(gMenuContainer.center.x + t.x, gMenuContainer.center.y + t.y);
+    [p setTranslation:CGPointZero inView:self.view];
+}
+
+- (void)handleDragMiniBar:(UIPanGestureRecognizer*)p {
+    if (!gIsMinimized) return;
+    CGPoint t = [p translationInView:self.view];
+    gMiniBar.center = CGPointMake(gMiniBar.center.x + t.x, gMiniBar.center.y + t.y);
+    [p setTranslation:CGPointZero inView:self.view];
+}
+
+// Abas
 - (void)tabTapped:(UIButton*)sender {
     currentTab = sender.tag;
     for (UIButton *b in sender.superview.subviews) {
@@ -315,20 +389,30 @@ static BOOL gIsMinimized = YES;
     ]];
     
     PurpouHooks *h = [PurpouHooks shared];
+    __weak typeof(self) weakSelf = self;
+    
     if (tab == 0) { // Visuals
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"ESP Box" on:NO onChange:^(BOOL on){ [h setESPEnabled:on]; }]];
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"ESP Tracer" on:NO onChange:^(BOOL on){}]];
     } else if (tab == 1) { // Assistance
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Aimbot" on:NO onChange:^(BOOL on){ 
             [h setAimbotEnabled:on]; 
+            [weakSelf showFovCircle:on]; // MOSTRA O FOV QUANDO LIGA
         }]];
-        [col addArrangedSubview:[[PurpouSlider alloc] initWithTitle:@"FOV" min:50 max:300 value:150 onChange:^(float v){}]];
+        
+        [col addArrangedSubview:[[PurpouSlider alloc] initWithTitle:@"FOV" min:50 max:400 value:gCurrentFov onChange:^(float v){
+            gCurrentFov = v;
+            [weakSelf updateFovSize:v]; // ATUALIZA O TAMANHO DO FOV NO SLIDER
+        }]];
     } else if (tab == 2) { // Misc
         [col addArrangedSubview:[[PurpouToggle alloc] initWithTitle:@"Speed" on:NO onChange:^(BOOL on){}]];
     }
 }
 @end
 
+// ============================================================
+// PurpouMenu
+// ============================================================
 @implementation PurpouMenu
 + (instancetype)shared {
     static PurpouMenu *inst = nil; static dispatch_once_t once;
@@ -354,12 +438,21 @@ static BOOL gIsMinimized = YES;
         win.hidden = NO;
         [win makeKeyAndVisible];
         
-        // Começa interagindo com a barrinha
         win.interactive1 = gMiniBar;
     });
 }
 
 - (void)showMinimized {
     [self show];
+}
+
+- (void)hide {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        gOverlayWindow.hidden = YES;
+        gOverlayWindow = nil;
+        gMenuContainer = nil;
+        gMiniBar = nil;
+        gFovCircle = nil;
+    });
 }
 @end
